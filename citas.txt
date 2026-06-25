@@ -1,0 +1,10 @@
+[
+  {
+    "acudiente": "Test",
+    "telefono": "3005999369",
+    "correo": "educitas@gmail.com",
+    "estudiante": "Pepito",
+    "grado": "15",
+    "horario": "Mié 8/Jul 07:00"
+  }
+]
