@@ -1,25 +1,33 @@
 import os
-import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 # Cargar variables de entorno del archivo .env
 load_dotenv()
 
-# Credenciales de SendGrid configuradas mediante variables de entorno.
+# Credenciales de SMTP configuradas mediante variables de entorno.
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER", "")
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 
-def send_email_sendgrid(to, subject, html, text, sender_name="Comfandi Las Delicias") -> bool:
+def send_email_smtp(to, subject, html, text, sender_name="Comfandi Las Delicias") -> bool:
     """
-    Envia un correo electronico utilizando la API v3 de SendGrid con requests.
+    Envia un correo electronico utilizando un servidor SMTP con smtplib.
     Soporta destinatarios individuales o multiples.
     Retorna True si el envio fue exitoso, False en caso contrario.
     """
-    if not SENDGRID_API_KEY:
-        print("[Correo] Error: SENDGRID_API_KEY no está configurada.")
-        return False
     if not EMAIL_SENDER:
         print("[Correo] Error: EMAIL_SENDER no está configurada.")
+        return False
+    if not SMTP_USER:
+        print("[Correo] Error: SMTP_USER no está configurada.")
+        return False
+    if not SMTP_PASSWORD:
+        print("[Correo] Error: SMTP_PASSWORD no está configurada.")
         return False
 
     # Formatear destinatarios
@@ -34,55 +42,31 @@ def send_email_sendgrid(to, subject, html, text, sender_name="Comfandi Las Delic
         print("[Correo] Error: No se especificaron destinatarios válidos.")
         return False
 
-    to_list = [{"email": email} for email in destinatarios]
-
-    # Payload para la API de SendGrid v3
-    payload = {
-        "personalizations": [
-            {
-                "to": to_list,
-                "subject": subject
-            }
-        ],
-        "from": {
-            "email": EMAIL_SENDER,
-            "name": sender_name
-        },
-        "content": []
-    }
-
-    if text:
-        payload["content"].append({
-            "type": "text/plain",
-            "value": text
-        })
-    if html:
-        payload["content"].append({
-            "type": "text/html",
-            "value": html
-        })
-
-    headers = {
-        "Authorization": f"Bearer {SENDGRID_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
     try:
-        response = requests.post(
-            "https://api.sendgrid.com/v3/mail/send",
-            json=payload,
-            headers=headers,
-            timeout=30
-        )
-        if 200 <= response.status_code < 300:
-            print(f"[Correo] Correo enviado exitosamente a {destinatarios} (Status: {response.status_code})")
-            return True
-        else:
-            print(f"[Correo] Error al enviar correo via SendGrid API. Status: {response.status_code}")
-            print(f"[Correo] Response Body: {response.text}")
-            return False
+        # Crear el mensaje multipart
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"{sender_name} <{EMAIL_SENDER}>"
+        msg["To"] = ", ".join(destinatarios)
+        msg["Subject"] = subject
+
+        if text:
+            msg.attach(MIMEText(text, "plain", "utf-8"))
+        if html:
+            msg.attach(MIMEText(html, "html", "utf-8"))
+
+        # Conectar al servidor SMTP y enviar
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(EMAIL_SENDER, destinatarios, msg.as_string())
+        server.quit()
+
+        print(f"[Correo] Correo enviado exitosamente a {destinatarios} vía SMTP")
+        return True
     except Exception as e:
-        print(f"[Correo] Error inesperado al conectar con SendGrid API: {e}")
+        print(f"[Correo] Error inesperado al enviar correo vía SMTP: {e}")
         return False
 
 
@@ -395,7 +379,7 @@ def enviar_correo_confirmacion(
         f"Por favor asista puntualmente con la documentacion requerida."
     )
 
-    return send_email_sendgrid(
+    return send_email_smtp(
         to=destinatario,
         subject=asunto,
         html=cuerpo_html,
@@ -420,7 +404,7 @@ def enviar_correo_docente(
     Envia un correo electronico de notificacion al docente con los detalles
     del nuevo agendamiento de matricula academica.
     """
-    if not EMAIL_SENDER or not SENDGRID_API_KEY or not correo_docente:
+    if not EMAIL_SENDER or not SMTP_PASSWORD or not correo_docente:
         return False
 
     dia_cita, hora_cita = formatear_horario_completo(horario)
@@ -511,7 +495,7 @@ def enviar_correo_docente(
         f"Telefono: {telefono}\n"
     )
 
-    return send_email_sendgrid(
+    return send_email_smtp(
         to=correo_docente,
         subject=asunto,
         html=cuerpo_html,
@@ -691,7 +675,7 @@ def enviar_correo_cancelacion(
     )
 
     for intento in range(1, max_intentos + 1):
-        if send_email_sendgrid(
+        if send_email_smtp(
             to=destinatario_padre,
             subject=asunto_padre,
             html=cuerpo_padre,
@@ -722,7 +706,7 @@ def enviar_correo_cancelacion(
             f"- Telefono: {telefono}\n"
         )
         for intento in range(1, max_intentos + 1):
-            if send_email_sendgrid(
+            if send_email_smtp(
                 to=correo_docente,
                 subject=asunto_docente,
                 html=cuerpo_docente,
@@ -929,7 +913,7 @@ def enviar_correo_reprogramacion(
 
     # 1. Enviar a padre
     for intento in range(1, max_intentos + 1):
-        if send_email_sendgrid(
+        if send_email_smtp(
             to=destinatario_padre,
             subject=asunto_padre,
             html=cuerpo_padre,
@@ -949,7 +933,7 @@ def enviar_correo_reprogramacion(
     for dest_email, sub, html_c, text_c, s_name in emails_to_send:
         sent_ok = False
         for intento in range(1, max_intentos + 1):
-            if send_email_sendgrid(
+            if send_email_smtp(
                 to=dest_email,
                 subject=sub,
                 html=html_c,
@@ -1024,7 +1008,7 @@ def enviar_correos_nuevo_agendamiento(
             else:
                 raise Exception("Fallo al enviar alguno de los correos (confirmacion o docente)")
         except Exception as e:
-            print(f"[Correo] Intento {intento} fallido en envio SendGrid combinado: {e}")
+            print(f"[Correo] Intento {intento} fallido en envio SMTP combinado: {e}")
             if intento < max_intentos:
                 time.sleep(2)
     return False
