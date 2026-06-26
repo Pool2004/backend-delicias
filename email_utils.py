@@ -1,7 +1,5 @@
 import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -9,28 +7,21 @@ from pathlib import Path
 env_path = Path(__file__).resolve().parent.parent / '.env'
 load_dotenv(dotenv_path=env_path, override=True)
 
-
-# Credenciales de SMTP configuradas mediante variables de entorno.
+# Credenciales de Brevo API configuradas mediante variables de entorno.
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER", "")
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
 
-def send_email_smtp(to, subject, html, text, sender_name="Comfandi Las Delicias") -> bool:
+def send_email_brevo(to, subject, html, text, sender_name="Comfandi Las Delicias") -> bool:
     """
-    Envia un correo electronico utilizando un servidor SMTP con smtplib.
-    Soporta destinatarios individuales o multiples.
+    Envia un correo electronico utilizando la API REST v3 de Brevo.
+    Evita el bloqueo de puertos SMTP de Render Free.
     Retorna True si el envio fue exitoso, False en caso contrario.
     """
     if not EMAIL_SENDER:
         print("[Correo] Error: EMAIL_SENDER no está configurada.")
         return False
-    if not SMTP_USER:
-        print("[Correo] Error: SMTP_USER no está configurada.")
-        return False
-    if not SMTP_PASSWORD:
-        print("[Correo] Error: SMTP_PASSWORD no está configurada.")
+    if not BREVO_API_KEY:
+        print("[Correo] Error: BREVO_API_KEY no está configurada.")
         return False
 
     # Formatear destinatarios
@@ -45,31 +36,39 @@ def send_email_smtp(to, subject, html, text, sender_name="Comfandi Las Delicias"
         print("[Correo] Error: No se especificaron destinatarios válidos.")
         return False
 
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
+
+    # Payload para Brevo API v3
+    payload = {
+        "sender": {
+            "name": sender_name,
+            "email": EMAIL_SENDER
+        },
+        "to": [{"email": email} for email in destinatarios],
+        "subject": subject
+    }
+
+    if html:
+        payload["htmlContent"] = html
+    if text:
+        payload["textContent"] = text
+
     try:
-        # Crear el mensaje multipart
-        msg = MIMEMultipart("alternative")
-        msg["From"] = f"{sender_name} <{EMAIL_SENDER}>"
-        msg["To"] = ", ".join(destinatarios)
-        msg["Subject"] = subject
-
-        if text:
-            msg.attach(MIMEText(text, "plain", "utf-8"))
-        if html:
-            msg.attach(MIMEText(html, "html", "utf-8"))
-
-        # Conectar al servidor SMTP y enviar
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(EMAIL_SENDER, destinatarios, msg.as_string())
-        server.quit()
-
-        print(f"[Correo] Correo enviado exitosamente a {destinatarios} vía SMTP")
-        return True
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        if 200 <= response.status_code < 300:
+            print(f"[Correo] Correo enviado exitosamente a {destinatarios} vía Brevo API (Status: {response.status_code})")
+            return True
+        else:
+            print(f"[Correo] Error al enviar correo via Brevo API. Status: {response.status_code}")
+            print(f"[Correo] Response Body: {response.text}")
+            return False
     except Exception as e:
-        print(f"[Correo] Error inesperado al enviar correo vía SMTP: {e}")
+        print(f"[Correo] Error inesperado al conectar con Brevo API: {e}")
         return False
 
 
@@ -382,7 +381,7 @@ def enviar_correo_confirmacion(
         f"Por favor asista puntualmente con la documentacion requerida."
     )
 
-    return send_email_smtp(
+    return send_email_brevo(
         to=destinatario,
         subject=asunto,
         html=cuerpo_html,
@@ -407,7 +406,7 @@ def enviar_correo_docente(
     Envia un correo electronico de notificacion al docente con los detalles
     del nuevo agendamiento de matricula academica.
     """
-    if not EMAIL_SENDER or not SMTP_PASSWORD or not correo_docente:
+    if not EMAIL_SENDER or not BREVO_API_KEY or not correo_docente:
         return False
 
     dia_cita, hora_cita = formatear_horario_completo(horario)
@@ -498,7 +497,7 @@ def enviar_correo_docente(
         f"Telefono: {telefono}\n"
     )
 
-    return send_email_smtp(
+    return send_email_brevo(
         to=correo_docente,
         subject=asunto,
         html=cuerpo_html,
@@ -678,7 +677,7 @@ def enviar_correo_cancelacion(
     )
 
     for intento in range(1, max_intentos + 1):
-        if send_email_smtp(
+        if send_email_brevo(
             to=destinatario_padre,
             subject=asunto_padre,
             html=cuerpo_padre,
@@ -709,7 +708,7 @@ def enviar_correo_cancelacion(
             f"- Telefono: {telefono}\n"
         )
         for intento in range(1, max_intentos + 1):
-            if send_email_smtp(
+            if send_email_brevo(
                 to=correo_docente,
                 subject=asunto_docente,
                 html=cuerpo_docente,
@@ -916,7 +915,7 @@ def enviar_correo_reprogramacion(
 
     # 1. Enviar a padre
     for intento in range(1, max_intentos + 1):
-        if send_email_smtp(
+        if send_email_brevo(
             to=destinatario_padre,
             subject=asunto_padre,
             html=cuerpo_padre,
@@ -936,7 +935,7 @@ def enviar_correo_reprogramacion(
     for dest_email, sub, html_c, text_c, s_name in emails_to_send:
         sent_ok = False
         for intento in range(1, max_intentos + 1):
-            if send_email_smtp(
+            if send_email_brevo(
                 to=dest_email,
                 subject=sub,
                 html=html_c,
@@ -1011,7 +1010,7 @@ def enviar_correos_nuevo_agendamiento(
             else:
                 raise Exception("Fallo al enviar alguno de los correos (confirmacion o docente)")
         except Exception as e:
-            print(f"[Correo] Intento {intento} fallido en envio SMTP combinado: {e}")
+            print(f"[Correo] Intento {intento} fallido en envio Brevo API combinado: {e}")
             if intento < max_intentos:
                 time.sleep(2)
     return False
