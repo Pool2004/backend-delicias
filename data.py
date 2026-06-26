@@ -46,6 +46,7 @@ for h in range(7, 16):
 # Franja de almuerzo excluida por grupo
 # Grupo A: no atiende de 12:00 a 12:45
 # Grupo B: no atiende de 13:00 a 13:45
+# Grupo C: no tiene exclusión de almuerzo (horario de corrido)
 ALMUERZO = {
     "A": "12",
     "B": "13"
