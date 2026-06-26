@@ -63,6 +63,14 @@ def generar_horarios(grupo: str) -> List[str]:
     slots = []
     for fecha in FECHAS_ATENCION:
         for hora in HORAS_BASE:
+            # Si el grupo es C, el horario va de corrido pero solo hasta las 12:00 inclusive
+            if grupo == "C":
+                partes = hora.split(":")
+                h = int(partes[0])
+                m = int(partes[1])
+                if h > 12 or (h == 12 and m > 0):
+                    continue
+
             if prefijo_excluido and hora.startswith(f"{prefijo_excluido}:"):
                 continue
             slots.append(f"{fecha['etiqueta']} {hora}")
