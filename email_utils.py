@@ -3,9 +3,12 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Cargar variables de entorno del archivo .env
-load_dotenv()
+# Cargar variables de entorno del archivo .env (buscando en la carpeta raíz del proyecto)
+env_path = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
+
 
 # Credenciales de SMTP configuradas mediante variables de entorno.
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER", "")

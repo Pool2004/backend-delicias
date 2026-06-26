@@ -2,10 +2,13 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from pathlib import Path
 from typing import List, Dict, Any
 
-# Cargar variables de entorno del archivo .env
-load_dotenv()
+# Cargar variables de entorno del archivo .env (buscando en la carpeta raíz del proyecto)
+env_path = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
+
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 texto = "Hola"
